@@ -19,7 +19,8 @@ OPTIONS = [
     "F. Food-focused",
     "G. About weight-loss medicine",
     "H. About body image",
-    "I. About other disease"
+    "I. About other disease",
+    "J. About policy"
 ]
 
 RAW_HEADER = [
