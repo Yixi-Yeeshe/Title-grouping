@@ -374,9 +374,9 @@ for sub_q in sub_questions:
 
     radio_key = f"{coder}_{title_id}_{s_col}"
 
-   if radio_key not in st.session_state:
-    if default_answer in OPTIONS:
-        st.session_state[radio_key] = default_answer
+    if radio_key not in st.session_state:
+       if default_answer in OPTIONS:
+          st.session_state[radio_key] = default_answer
 
     answer = st.radio(
         label=f"{s_col}_answer",
