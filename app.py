@@ -19,8 +19,7 @@ OPTIONS = [
     "F. Food-focused",
     "G. About weight-loss medicine",
     "H. About body image",
-    "I. About other disease",
-    "J. About policy"
+    "I. About other disease"
 ]
 
 RAW_HEADER = [
@@ -124,7 +123,9 @@ def ensure_raw_header(raw_ws):
         raw_ws.update("A1:H1", [RAW_HEADER])
 
 
-def read_raw_data_live(raw_ws):
+@st.cache_data(ttl=60)
+def read_raw_data_cached():
+    raw_ws = get_cached_ws(RAW_SHEET)
     ensure_raw_header(raw_ws)
 
     values = raw_ws.get_all_values()
@@ -154,6 +155,10 @@ def read_raw_data_live(raw_ws):
     return df
 
 
+def clear_raw_cache():
+    read_raw_data_cached.clear()
+
+
 def save_page_responses_fast(
     raw_ws,
     coder_id,
@@ -164,7 +169,28 @@ def save_page_responses_fast(
 ):
     updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    live_df = read_raw_data_live(raw_ws)
+    # 保存前读一次最新表格，保证新答案覆盖旧答案
+    values = raw_ws.get_all_values()
+
+    if len(values) <= 1:
+        live_df = pd.DataFrame(columns=RAW_HEADER)
+        live_df["_row_num"] = []
+    else:
+        header = values[0]
+        rows = values[1:]
+        live_df = pd.DataFrame(rows, columns=header)
+
+        for col in RAW_HEADER:
+            if col not in live_df.columns:
+                live_df[col] = ""
+
+        live_df = live_df[RAW_HEADER]
+        live_df = live_df.fillna("")
+        live_df["_row_num"] = range(2, len(live_df) + 2)
+
+        live_df["coder_id"] = live_df["coder_id"].astype(str).str.strip().str.lower()
+        live_df["title_id"] = live_df["title_id"].apply(norm_id)
+        live_df["s_col"] = live_df["s_col"].astype(str).str.strip()
 
     coder_id = str(coder_id).strip().lower()
     title_id = norm_id(title_id)
@@ -196,7 +222,6 @@ def save_page_responses_fast(
         ]
 
         if not matched.empty:
-            # 如果之前不小心产生了重复行，更新最后一行，保证最新答案显示
             row_num = int(matched.iloc[-1]["_row_num"])
             updates.append({
                 "range": f"A{row_num}:H{row_num}",
@@ -211,6 +236,8 @@ def save_page_responses_fast(
     if append_rows:
         raw_ws.append_rows(append_rows, value_input_option="USER_ENTERED")
 
+    clear_raw_cache()
+
 
 def update_kappa_format(kappa_ws, df):
     kappa_ws.clear()
@@ -224,7 +251,6 @@ def update_kappa_format(kappa_ws, df):
     if "_row_num" in df.columns:
         df = df.drop(columns=["_row_num"])
 
-    # 如果有重复答案，只保留最新的一条
     df = df.sort_values("updated_at")
     df = df.drop_duplicates(
         subset=["coder_id", "title_id", "s_col"],
@@ -256,7 +282,7 @@ if len(PAGES) == 0:
 raw_ws = get_cached_ws(RAW_SHEET)
 kappa_ws = get_cached_ws(KAPPA_SHEET)
 
-df = read_raw_data_live(raw_ws)
+df = read_raw_data_cached()
 
 coder = st.text_input(
     "请输入你的 coder ID：",
@@ -289,7 +315,6 @@ done = len(completed_title_ids)
 st.progress(done / total if total > 0 else 0)
 st.write(f"进度：{done}/{total}")
 
-# 每次输入 coder 后，自动定位到第一个未完成题
 if "current_coder" not in st.session_state or st.session_state.current_coder != coder:
     st.session_state.current_coder = coder
     st.session_state.finished = False
@@ -316,7 +341,7 @@ if st.session_state.finished:
 
     st.divider()
     if st.button("更新 title_kappa 表"):
-        latest_df = read_raw_data_live(raw_ws)
+        latest_df = read_raw_data_cached()
         update_kappa_format(kappa_ws, latest_df)
         st.success("title_kappa 已更新。")
 
@@ -341,7 +366,6 @@ st.write(title_text)
 
 st.markdown("### 请判断这个标题属于哪个选项")
 
-# 用一开始读取的 df 回填答案，避免每一题都反复读取 Google Sheet
 existing_page_answers = df[
     (df["coder_id"].astype(str) == coder) &
     (df["title_id"].astype(str).apply(norm_id) == title_id)
@@ -371,11 +395,11 @@ for sub_q in sub_questions:
 
     default_answer = existing_answer_dict.get(s_col, "")
 
-    radio_key = f"{coder}_{title_id}_{s_col}"
+    radio_key = f"{coder}_{idx}_{s_col}"
 
     if radio_key not in st.session_state:
-       if default_answer in OPTIONS:
-          st.session_state[radio_key] = default_answer
+        if default_answer in OPTIONS:
+            st.session_state[radio_key] = default_answer
 
     answer = st.radio(
         label=f"{s_col}_answer",
@@ -390,9 +414,9 @@ for sub_q in sub_questions:
         "answer": answer
     })
 
-comment_key = f"{coder}_{title_id}_comment"
+comment_key = f"{coder}_{idx}_comment"
 
-if existing_comment and comment_key not in st.session_state:
+if comment_key not in st.session_state:
     st.session_state[comment_key] = existing_comment
 
 comment = st.text_area(
@@ -430,7 +454,7 @@ with nav_col2:
         step=1
     )
 
-    if st.button("跳转"):
+    if st.button("保存并跳转"):
         save_page_responses_fast(
             raw_ws=raw_ws,
             coder_id=coder,
@@ -472,6 +496,6 @@ st.write("title groups = 原始长表，每一行是一个 coder 对一个标题
 st.write("title_kappa = 可用于计算 kappa 的宽表。")
 
 if st.button("手动更新 title_kappa 表"):
-    latest_df = read_raw_data_live(raw_ws)
+    latest_df = read_raw_data_cached()
     update_kappa_format(kappa_ws, latest_df)
     st.success("title_kappa 已更新。")
