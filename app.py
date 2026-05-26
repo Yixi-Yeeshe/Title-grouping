@@ -17,7 +17,7 @@ OPTIONS = [
     "C. Health-focused",
     "D. Weight-loss-focused",
     "E. Diet-focused",
-    "F. Food-focused",policy
+    "F. Food-focused",
     "G. About weight-loss medicine",
     "H. About body image",
     "I. About other disease",
