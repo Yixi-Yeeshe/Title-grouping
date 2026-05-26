@@ -40,7 +40,7 @@ def load_data(path):
     df["New ID"] = df["New ID"].astype(str)
     df["Title"] = df["Title"].astype(str)
 
-    return df
+    return df.reset_index(drop=True)
 
 
 @st.cache_resource
@@ -125,6 +125,21 @@ def save_answer(worksheet, coder, new_id, title, answer_code, answer_label):
     )
 
 
+def get_previous_answer(existing_answers, coder, new_id):
+    if len(existing_answers) == 0:
+        return None
+
+    matched = existing_answers[
+        (existing_answers["coder"].astype(str) == str(coder)) &
+        (existing_answers["New ID"].astype(str) == str(new_id))
+    ]
+
+    if len(matched) == 0:
+        return None
+
+    return matched.iloc[0]["answer_code"]
+
+
 st.title("Title Coding App")
 
 df = load_data(DATA_PATH)
@@ -139,12 +154,9 @@ if not coder:
 
 existing_answers = load_existing_answers(worksheet)
 
-if len(existing_answers) > 0 and "coder" in existing_answers.columns:
-    coder_answers = existing_answers[
-        existing_answers["coder"].astype(str) == str(coder)
-    ]
-else:
-    coder_answers = pd.DataFrame()
+coder_answers = existing_answers[
+    existing_answers["coder"].astype(str) == str(coder)
+] if len(existing_answers) > 0 and "coder" in existing_answers.columns else pd.DataFrame()
 
 answered_ids = set(coder_answers["New ID"].astype(str)) if len(coder_answers) > 0 else set()
 
@@ -155,63 +167,39 @@ remaining_n = total_n - answered_n
 st.write(f"总标题数: {total_n}")
 st.write(f"已完成: {answered_n}")
 st.write(f"剩余: {remaining_n}")
-
-progress = answered_n / total_n if total_n > 0 else 0
-st.progress(progress)
-
-mode = st.radio(
-    "请选择模式：",
-    ["继续未完成的标题", "查看/修改已完成的标题"],
-    horizontal=True
-)
+st.progress(answered_n / total_n if total_n > 0 else 0)
 
 if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
-if mode == "继续未完成的标题":
-    remaining_df = df[
-        ~df["New ID"].astype(str).isin(answered_ids)
-    ].reset_index(drop=True)
+# =========================
+# 跳转到某题
+# =========================
 
-    if len(remaining_df) == 0:
-        st.success("这个 coder 已经完成所有标题。")
-        st.stop()
+st.divider()
 
-    if st.session_state.current_index >= len(remaining_df):
-        st.session_state.current_index = 0
+jump_id = st.text_input("输入 New ID 跳转到某题：")
 
-    row = remaining_df.iloc[st.session_state.current_index]
+if st.button("跳转"):
+    matched_index = df.index[df["New ID"].astype(str) == str(jump_id)].tolist()
 
-else:
-    if len(coder_answers) == 0:
-        st.info("你还没有已完成的标题。")
-        st.stop()
+    if len(matched_index) > 0:
+        st.session_state.current_index = matched_index[0]
+        st.rerun()
+    else:
+        st.error("找不到这个 New ID。")
 
-    selected_id = st.selectbox(
-        "选择要查看/修改的 New ID:",
-        coder_answers["New ID"].astype(str).tolist()
-    )
+# =========================
+# 当前题目
+# =========================
 
-    row = df[df["New ID"].astype(str) == str(selected_id)].iloc[0]
+current_index = st.session_state.current_index
+row = df.iloc[current_index]
 
 new_id = row["New ID"]
 title = row["Title"]
 
-st.divider()
-st.subheader(f"New ID: {new_id}")
-
-st.markdown("### 这个标题属于下面哪个选项？")
-st.markdown(f"> {title}")
-
-previous_answer = None
-
-if len(coder_answers) > 0:
-    matched = coder_answers[
-        coder_answers["New ID"].astype(str) == str(new_id)
-    ]
-
-    if len(matched) > 0:
-        previous_answer = matched.iloc[0]["answer_code"]
+previous_answer = get_previous_answer(existing_answers, coder, new_id)
 
 option_keys = list(OPTIONS.keys())
 
@@ -219,40 +207,73 @@ default_index = 0
 if previous_answer in option_keys:
     default_index = option_keys.index(previous_answer)
 
+st.divider()
+st.subheader(f"第 {current_index + 1} / {total_n} 题")
+st.subheader(f"New ID: {new_id}")
+
+st.markdown("### 这个标题属于下面哪个选项？")
+st.markdown(f"> {title}")
+
 selected_code = st.radio(
     "请选择一个答案：",
     option_keys,
     format_func=lambda x: f"{x}. {OPTIONS[x]}",
-    index=default_index
+    index=default_index,
+    key=f"answer_{new_id}"
 )
 
 selected_label = OPTIONS[selected_code]
 
-col1, col2 = st.columns(2)
+# =========================
+# 按钮：上一题 / 保存 / 下一题
+# =========================
+
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("保存答案", type="primary"):
+    if st.button("上一题"):
         save_answer(
-            worksheet=worksheet,
-            coder=coder,
-            new_id=new_id,
-            title=title,
-            answer_code=selected_code,
-            answer_label=selected_label
+            worksheet,
+            coder,
+            new_id,
+            title,
+            selected_code,
+            selected_label
         )
 
-        st.success("已保存。")
-
-        if mode == "继续未完成的标题":
-            st.session_state.current_index += 1
+        if st.session_state.current_index > 0:
+            st.session_state.current_index -= 1
 
         st.rerun()
 
 with col2:
-    if mode == "继续未完成的标题":
-        if st.button("跳过这个标题"):
+    if st.button("保存当前答案", type="primary"):
+        save_answer(
+            worksheet,
+            coder,
+            new_id,
+            title,
+            selected_code,
+            selected_label
+        )
+        st.success("已保存。")
+        st.rerun()
+
+with col3:
+    if st.button("下一题"):
+        save_answer(
+            worksheet,
+            coder,
+            new_id,
+            title,
+            selected_code,
+            selected_label
+        )
+
+        if st.session_state.current_index < total_n - 1:
             st.session_state.current_index += 1
-            st.rerun()
+
+        st.rerun()
 
 st.divider()
 
