@@ -3,17 +3,12 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import os
-
-# =========================
-# 基本设置
-# =========================
 
 st.set_page_config(page_title="Title Coding App", layout="wide")
 
-DATA_PATH = r"title 用于 app数据.csv"   # 你的csv上传到GitHub后的文件名
-SPREADSHEET_ID = "你的Google Sheet ID"
-WORKSHEET_NAME = "title_coding"        # 新worksheet名字，先在Google Sheet里手动建好
+DATA_PATH = "title 用于 app数据.csv"
+SPREADSHEET_ID = "1VeGdUjuje836LwdghDEZ_F43zIy5Ey9unJQC_X05JMQ"
+WORKSHEET_NAME = "title groups"
 
 OPTIONS = {
     "A": "Obesity-focused",
@@ -27,9 +22,6 @@ OPTIONS = {
     "I": "About other disease",
 }
 
-# =========================
-# 读取CSV数据
-# =========================
 
 @st.cache_data
 def load_data(path):
@@ -51,10 +43,6 @@ def load_data(path):
     return df
 
 
-# =========================
-# 连接Google Sheet
-# =========================
-
 @st.cache_resource
 def connect_google_sheet():
     scopes = [
@@ -72,6 +60,23 @@ def connect_google_sheet():
     worksheet = sheet.worksheet(WORKSHEET_NAME)
 
     return worksheet
+
+
+def ensure_header(worksheet):
+    header = [
+        "coder",
+        "New ID",
+        "Title",
+        "answer_code",
+        "answer_label",
+        "timestamp",
+    ]
+
+    first_row = worksheet.row_values(1)
+
+    if first_row != header:
+        worksheet.clear()
+        worksheet.append_row(header)
 
 
 def load_existing_answers(worksheet):
@@ -95,8 +100,8 @@ def load_existing_answers(worksheet):
 def save_answer(worksheet, coder, new_id, title, answer_code, answer_label):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    existing = worksheet.get_all_records()
-    df_existing = pd.DataFrame(existing)
+    records = worksheet.get_all_records()
+    df_existing = pd.DataFrame(records)
 
     if len(df_existing) > 0:
         df_existing.columns = df_existing.columns.str.strip()
@@ -120,23 +125,11 @@ def save_answer(worksheet, coder, new_id, title, answer_code, answer_label):
     )
 
 
-# =========================
-# App主体
-# =========================
-
 st.title("Title Coding App")
 
 df = load_data(DATA_PATH)
 worksheet = connect_google_sheet()
-
-# 如果worksheet是空的，添加表头
-if worksheet.row_count > 0:
-    first_row = worksheet.row_values(1)
-    if first_row == []:
-        worksheet.append_row([
-            "coder", "New ID", "Title", "answer_code",
-            "answer_label", "timestamp"
-        ])
+ensure_header(worksheet)
 
 coder = st.text_input("请输入你的名字 / coder name:")
 
@@ -146,9 +139,12 @@ if not coder:
 
 existing_answers = load_existing_answers(worksheet)
 
-coder_answers = existing_answers[
-    existing_answers["coder"].astype(str) == str(coder)
-] if len(existing_answers) > 0 and "coder" in existing_answers.columns else pd.DataFrame()
+if len(existing_answers) > 0 and "coder" in existing_answers.columns:
+    coder_answers = existing_answers[
+        existing_answers["coder"].astype(str) == str(coder)
+    ]
+else:
+    coder_answers = pd.DataFrame()
 
 answered_ids = set(coder_answers["New ID"].astype(str)) if len(coder_answers) > 0 else set()
 
@@ -163,10 +159,6 @@ st.write(f"剩余: {remaining_n}")
 progress = answered_n / total_n if total_n > 0 else 0
 st.progress(progress)
 
-# =========================
-# 选择模式
-# =========================
-
 mode = st.radio(
     "请选择模式：",
     ["继续未完成的标题", "查看/修改已完成的标题"],
@@ -177,7 +169,9 @@ if "current_index" not in st.session_state:
     st.session_state.current_index = 0
 
 if mode == "继续未完成的标题":
-    remaining_df = df[~df["New ID"].astype(str).isin(answered_ids)].reset_index(drop=True)
+    remaining_df = df[
+        ~df["New ID"].astype(str).isin(answered_ids)
+    ].reset_index(drop=True)
 
     if len(remaining_df) == 0:
         st.success("这个 coder 已经完成所有标题。")
@@ -200,10 +194,6 @@ else:
 
     row = df[df["New ID"].astype(str) == str(selected_id)].iloc[0]
 
-# =========================
-# 显示题目
-# =========================
-
 new_id = row["New ID"]
 title = row["Title"]
 
@@ -216,13 +206,16 @@ st.markdown(f"> {title}")
 previous_answer = None
 
 if len(coder_answers) > 0:
-    matched = coder_answers[coder_answers["New ID"].astype(str) == str(new_id)]
+    matched = coder_answers[
+        coder_answers["New ID"].astype(str) == str(new_id)
+    ]
+
     if len(matched) > 0:
         previous_answer = matched.iloc[0]["answer_code"]
 
 option_keys = list(OPTIONS.keys())
 
-default_index = None
+default_index = 0
 if previous_answer in option_keys:
     default_index = option_keys.index(previous_answer)
 
@@ -230,14 +223,10 @@ selected_code = st.radio(
     "请选择一个答案：",
     option_keys,
     format_func=lambda x: f"{x}. {OPTIONS[x]}",
-    index=default_index if default_index is not None else 0
+    index=default_index
 )
 
 selected_label = OPTIONS[selected_code]
-
-# =========================
-# 保存
-# =========================
 
 col1, col2 = st.columns(2)
 
@@ -251,6 +240,7 @@ with col1:
             answer_code=selected_code,
             answer_label=selected_label
         )
+
         st.success("已保存。")
 
         if mode == "继续未完成的标题":
@@ -266,4 +256,14 @@ with col2:
 
 st.divider()
 
-st.caption("A = Obesity-focused; B = Obesity-relevant; C = Health-focused; D = Weight-loss-focused; E = Diet-focused; F = Food-focused; G = About weight-loss medicine; H = About body image; I = About other disease.")
+st.caption(
+    "A = Obesity-focused; "
+    "B = Obesity-relevant; "
+    "C = Health-focused; "
+    "D = Weight-loss-focused; "
+    "E = Diet-focused; "
+    "F = Food-focused; "
+    "G = About weight-loss medicine; "
+    "H = About body image; "
+    "I = About other disease."
+)
