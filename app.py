@@ -17,10 +17,11 @@ OPTIONS = [
     "C. Health-focused",
     "D. Weight-loss-focused",
     "E. Diet-focused",
-    "F. Food-focused",
+    "F. Food-focused",policy
     "G. About weight-loss medicine",
     "H. About body image",
-    "I. About other disease"
+    "I. About other disease",
+    "J. About policy"
 ]
 
 RAW_HEADER = [
