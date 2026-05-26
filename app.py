@@ -162,11 +162,28 @@ def save_page_responses_fast(
 ):
     updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    df = df.copy()
+    # 每次保存前重新读取 Google Sheet，避免用旧缓存导致重复 append
+    values = raw_ws.get_all_values()
 
-    existing = df[
-        (df["coder_id"].astype(str) == str(coder_id)) &
-        (df["title_id"].astype(str) == str(title_id))
+    if len(values) <= 1:
+        live_df = pd.DataFrame(columns=RAW_HEADER)
+        live_df["_row_num"] = []
+    else:
+        header = values[0]
+        rows = values[1:]
+        live_df = pd.DataFrame(rows, columns=header)
+
+        for col in RAW_HEADER:
+            if col not in live_df.columns:
+                live_df[col] = ""
+
+        live_df = live_df[RAW_HEADER]
+        live_df = live_df.fillna("")
+        live_df["_row_num"] = range(2, len(live_df) + 2)
+
+    existing = live_df[
+        (live_df["coder_id"].astype(str).str.strip() == str(coder_id).strip()) &
+        (live_df["title_id"].astype(str).str.strip() == str(title_id).strip())
     ]
 
     updates = []
@@ -174,6 +191,7 @@ def save_page_responses_fast(
 
     for item in responses:
         s_col = item["s_col"]
+        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         row_values = [
             coder_id,
@@ -186,7 +204,9 @@ def save_page_responses_fast(
             updated_at
         ]
 
-        matched = existing[existing["s_col"].astype(str) == str(s_col)]
+        matched = existing[
+            existing["s_col"].astype(str).str.strip() == str(s_col).strip()
+        ]
 
         if not matched.empty:
             row_num = int(matched.iloc[0]["_row_num"])
