@@ -341,12 +341,10 @@ st.write(title_text)
 
 st.markdown("### 请判断这个标题属于哪个选项")
 
-# 每次显示页面时，用 Google Sheet 里的最新答案回填
-latest_df = read_raw_data_live(raw_ws)
-
-existing_page_answers = latest_df[
-    (latest_df["coder_id"].astype(str) == coder) &
-    (latest_df["title_id"].astype(str).apply(norm_id) == title_id)
+# 用一开始读取的 df 回填答案，避免每一题都反复读取 Google Sheet
+existing_page_answers = df[
+    (df["coder_id"].astype(str) == coder) &
+    (df["title_id"].astype(str).apply(norm_id) == title_id)
 ].copy()
 
 if not existing_page_answers.empty:
