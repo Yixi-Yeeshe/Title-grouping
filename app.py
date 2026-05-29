@@ -11,15 +11,18 @@ DATA_PATH = "title 用于 app数据.csv"
 SPREADSHEET_ID = "1VeGdUjuje836LwdghDEZ_F43zIy5Ey9unJQC_X05JMQ"
 
 OPTIONS = [
-    "A. Obesity-focused",
-    "B. Obesity-relevant",
-    "C. Health-focused",
-    "D. Weight-loss-focused",
-    "E. Diet-focused",
-    "F. Food-focused",
-    "G. About weight-loss medicine",
-    "H. About body image",
-    "I. About other disease"
+    "1. Obesity-focused",
+    "2. Obesity-mentioned",
+    "3. About health",
+    "4. About Weight loss",
+    "5. About Diet",
+    "6. About Food",
+    "7. About weight-loss medicine",
+    "8. About body image",
+    "9. About other disease",
+    "10. About policy",
+    "11. Irrelevant",
+    "12. Ambiguous",
 ]
 
 RAW_HEADER = [
