@@ -37,6 +37,15 @@ RAW_HEADER = [
 st.set_page_config(page_title="Study 3 Title Grouping", layout="wide")
 st.title("Study 3 Title Grouping")
 
+# -----------------------------
+# Coding Manual
+# -----------------------------
+with st.expander("📖 Coding Manual (click to view)"):
+    st.image(
+        "title group coding manual.jpg",
+        use_container_width=True
+    )
+
 
 def norm_id(x):
     x = str(x).strip()
